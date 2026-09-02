@@ -1,0 +1,571 @@
+git-demo.sh  |  git version 2.55.0  |  workdir: /home/SammyUrfen/.cache/gitdemo
+
+================================================================
+TASK 1: git commit -m  vs  git commit -a -m
+================================================================
+
+$ echo 'line 1: original' > tracked.txt
+[exit code: 0]
+
+$ git add tracked.txt
+[exit code: 0]
+
+$ git commit -m 'c0: add tracked.txt'
+[main (root-commit) 734f4f3] c0: add tracked.txt
+ 1 file changed, 1 insertion(+)
+ create mode 100644 tracked.txt
+[exit code: 0]
+
+--- Now produce the two kinds of change that behave differently ---
+
+$ echo 'line 2: modification, deliberately NOT staged' >> tracked.txt
+[exit code: 0]
+
+$ printf 'this file has never been added to the index\n' > untracked.txt
+[exit code: 0]
+
+$ git status
+On branch main
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   tracked.txt
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	untracked.txt
+
+no changes added to commit (use "git add" and/or "git commit -a")
+[exit code: 0]
+
+$ git status --short
+ M tracked.txt
+?? untracked.txt
+[exit code: 0]
+
+# '  M tracked.txt' = modified in worktree, NOT in the index (second column).
+# '?? untracked.txt' = git has never seen this path.
+
+--- 1a. plain 'git commit -m' with an empty index ---
+
+$ git commit -m 'attempt: plain commit -m'
+On branch main
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   tracked.txt
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	untracked.txt
+
+no changes added to commit (use "git add" and/or "git commit -a")
+[exit code: 1]
+
+# Non-zero exit, nothing committed. The index is empty, so there is nothing to record.
+
+$ git log --oneline
+734f4f3 c0: add tracked.txt
+[exit code: 0]
+
+--- 1b. 'git commit -a -m' ---
+
+$ git commit -a -m 'c1: commit -a sweeps the tracked modification'
+[main 7cd6cc0] c1: commit -a sweeps the tracked modification
+ 1 file changed, 1 insertion(+)
+[exit code: 0]
+
+$ git log --oneline
+7cd6cc0 c1: commit -a sweeps the tracked modification
+734f4f3 c0: add tracked.txt
+[exit code: 0]
+
+$ git show --stat HEAD
+commit 7cd6cc0e681acec1c0a7b0669efa6af6b4a9f136
+Author: Bibek Jyoti Charah <bibekcharah@gmail.com>
+Date:   Wed Sep 2 10:02:00 2026 +0530
+
+    c1: commit -a sweeps the tracked modification
+
+ tracked.txt | 1 +
+ 1 file changed, 1 insertion(+)
+[exit code: 0]
+
+--- 1c. proof that -a did NOT commit the untracked file ---
+
+$ git show --stat --name-only HEAD
+commit 7cd6cc0e681acec1c0a7b0669efa6af6b4a9f136
+Author: Bibek Jyoti Charah <bibekcharah@gmail.com>
+Date:   Wed Sep 2 10:02:00 2026 +0530
+
+    c1: commit -a sweeps the tracked modification
+
+tracked.txt
+[exit code: 0]
+
+$ git status --short
+?? untracked.txt
+[exit code: 0]
+
+# untracked.txt is still '??' after the -a commit: -a means
+# 'stage modifications and deletions of files git already tracks', not 'git add -A'.
+
+$ git ls-files
+tracked.txt
+[exit code: 0]
+
+$ git cat-file -p HEAD^{tree}
+100644 blob 5d024043f3afe00cd3dcb65dbc797d92377c2458	tracked.txt
+[exit code: 0]
+
+# The committed tree lists only tracked.txt. untracked.txt is absent from the object store.
+
+--- 1d. the only way to get it in: an explicit add ---
+
+$ git add untracked.txt
+[exit code: 0]
+
+$ git commit -m 'c2: add untracked.txt explicitly'
+[main dbf9a1c] c2: add untracked.txt explicitly
+ 1 file changed, 1 insertion(+)
+ create mode 100644 untracked.txt
+[exit code: 0]
+
+$ git show --stat HEAD
+commit dbf9a1c7280fe95a7abb6bca92d4fc695be6b7b5
+Author: Bibek Jyoti Charah <bibekcharah@gmail.com>
+Date:   Wed Sep 2 10:03:00 2026 +0530
+
+    c2: add untracked.txt explicitly
+
+ untracked.txt | 1 +
+ 1 file changed, 1 insertion(+)
+[exit code: 0]
+
+$ git status --short
+[exit code: 0]
+
+$ git log --oneline
+dbf9a1c c2: add untracked.txt explicitly
+7cd6cc0 c1: commit -a sweeps the tracked modification
+734f4f3 c0: add tracked.txt
+[exit code: 0]
+
+
+================================================================
+TASK 2: cherry-pick
+================================================================
+
+--- 2a. three commits on main ---
+
+$ echo 'alpha' > a.txt && git add a.txt && git commit -m 'main-1: add a.txt'
+[main (root-commit) 624c6ef] main-1: add a.txt
+ 1 file changed, 1 insertion(+)
+ create mode 100644 a.txt
+[exit code: 0]
+
+$ echo 'beta' > b.txt && git add b.txt && git commit -m 'main-2: add b.txt'
+[main 6669940] main-2: add b.txt
+ 1 file changed, 1 insertion(+)
+ create mode 100644 b.txt
+[exit code: 0]
+
+$ printf 'version: base\n' > shared.txt && git add shared.txt && git commit -m 'main-3: add shared.txt'
+[main 2130a07] main-3: add shared.txt
+ 1 file changed, 1 insertion(+)
+ create mode 100644 shared.txt
+[exit code: 0]
+
+$ git log --oneline
+2130a07 main-3: add shared.txt
+6669940 main-2: add b.txt
+624c6ef main-1: add a.txt
+[exit code: 0]
+
+--- 2b. branch 'feature' off main, three commits on it ---
+
+$ git switch -c feature
+Switched to a new branch 'feature'
+[exit code: 0]
+
+$ echo 'feature one' > feat1.txt && git add feat1.txt && git commit -m 'feat-1: add feat1.txt'
+[feature 6e5b0b8] feat-1: add feat1.txt
+ 1 file changed, 1 insertion(+)
+ create mode 100644 feat1.txt
+[exit code: 0]
+
+$ echo 'feature two - THIS is the commit we will cherry-pick' > feat2.txt && git add feat2.txt && git commit -m 'feat-2: add feat2.txt'
+[feature 8990bd1] feat-2: add feat2.txt
+ 1 file changed, 1 insertion(+)
+ create mode 100644 feat2.txt
+[exit code: 0]
+
+$ printf 'version: feature-edit\n' > shared.txt && git add shared.txt && git commit -m 'feat-3: edit shared.txt on feature'
+[feature 1514135] feat-3: edit shared.txt on feature
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+[exit code: 0]
+
+$ git log --oneline
+1514135 feat-3: edit shared.txt on feature
+8990bd1 feat-2: add feat2.txt
+6e5b0b8 feat-1: add feat1.txt
+2130a07 main-3: add shared.txt
+6669940 main-2: add b.txt
+624c6ef main-1: add a.txt
+[exit code: 0]
+
+$ git log --oneline main..feature
+1514135 feat-3: edit shared.txt on feature
+8990bd1 feat-2: add feat2.txt
+6e5b0b8 feat-1: add feat1.txt
+[exit code: 0]
+
+--- 2c. identify the middle commit (feat-2) and cherry-pick ONLY it onto main ---
+
+$ git rev-parse feature~1
+8990bd12eb37289a786b7d3e4561af9a00445c49
+[exit code: 0]
+
+$ git show --stat 8990bd12eb37289a786b7d3e4561af9a00445c49
+commit 8990bd12eb37289a786b7d3e4561af9a00445c49
+Author: Bibek Jyoti Charah <bibekcharah@gmail.com>
+Date:   Wed Sep 2 10:08:00 2026 +0530
+
+    feat-2: add feat2.txt
+
+ feat2.txt | 1 +
+ 1 file changed, 1 insertion(+)
+[exit code: 0]
+
+$ git switch main
+Switched to branch 'main'
+[exit code: 0]
+
+$ git log --oneline
+2130a07 main-3: add shared.txt
+6669940 main-2: add b.txt
+624c6ef main-1: add a.txt
+[exit code: 0]
+
+$ git cherry-pick 8990bd12eb37289a786b7d3e4561af9a00445c49
+[main ff20813] feat-2: add feat2.txt
+ Date: Wed Sep 2 10:08:00 2026 +0530
+ 1 file changed, 1 insertion(+)
+ create mode 100644 feat2.txt
+[exit code: 0]
+
+--- 2d. verify: new SHA, same diff ---
+
+$ git log --oneline main
+ff20813 feat-2: add feat2.txt
+2130a07 main-3: add shared.txt
+6669940 main-2: add b.txt
+624c6ef main-1: add a.txt
+[exit code: 0]
+
+original SHA on feature : 8990bd12eb37289a786b7d3e4561af9a00445c49
+new SHA on main         : ff208135f6bbe35dc7202eb5b0675b87979860e7
+
+$ git show --stat ff208135f6bbe35dc7202eb5b0675b87979860e7
+commit ff208135f6bbe35dc7202eb5b0675b87979860e7
+Author: Bibek Jyoti Charah <bibekcharah@gmail.com>
+Date:   Wed Sep 2 10:08:00 2026 +0530
+
+    feat-2: add feat2.txt
+
+ feat2.txt | 1 +
+ 1 file changed, 1 insertion(+)
+[exit code: 0]
+
+$ cat feat2.txt
+feature two - THIS is the commit we will cherry-pick
+[exit code: 0]
+
+$ ls
+a.txt
+b.txt
+feat2.txt
+shared.txt
+[exit code: 0]
+
+$ cat shared.txt
+version: base
+[exit code: 0]
+
+# feat1.txt never arrived, and shared.txt is still 'version: base' - feat-3's edit
+# did not come along either. Only the one picked commit was applied.
+
+$ git log --graph --oneline --all
+* ff20813 feat-2: add feat2.txt
+| * 1514135 feat-3: edit shared.txt on feature
+| * 8990bd1 feat-2: add feat2.txt
+| * 6e5b0b8 feat-1: add feat1.txt
+|/  
+* 2130a07 main-3: add shared.txt
+* 6669940 main-2: add b.txt
+* 624c6ef main-1: add a.txt
+[exit code: 0]
+
+# Two distinct nodes carry the identical change: 8990bd12eb37289a786b7d3e4561af9a00445c49 on feature, ff208135f6bbe35dc7202eb5b0675b87979860e7 on main.
+
+$ git diff 8990bd12eb37289a786b7d3e4561af9a00445c49^ 8990bd12eb37289a786b7d3e4561af9a00445c49
+diff --git a/feat2.txt b/feat2.txt
+new file mode 100644
+index 0000000..e250b82
+--- /dev/null
++++ b/feat2.txt
+@@ -0,0 +1 @@
++feature two - THIS is the commit we will cherry-pick
+[exit code: 0]
+
+$ git diff ff208135f6bbe35dc7202eb5b0675b87979860e7^ ff208135f6bbe35dc7202eb5b0675b87979860e7
+diff --git a/feat2.txt b/feat2.txt
+new file mode 100644
+index 0000000..e250b82
+--- /dev/null
++++ b/feat2.txt
+@@ -0,0 +1 @@
++feature two - THIS is the commit we will cherry-pick
+[exit code: 0]
+
+# Identical patch text, different commit objects. cherry-pick copies a diff; it does not move a commit.
+
+$ git show -s --format='%H%n  parent : %P%n  author : %an <%ae> %ad%n  subject: %s' 8990bd12eb37289a786b7d3e4561af9a00445c49
+8990bd12eb37289a786b7d3e4561af9a00445c49
+  parent : 6e5b0b8bdd4fd8784c778ab57309c10e35ee04e3
+  author : Bibek Jyoti Charah <bibekcharah@gmail.com> Wed Sep 2 10:08:00 2026 +0530
+  subject: feat-2: add feat2.txt
+[exit code: 0]
+
+$ git show -s --format='%H%n  parent : %P%n  author : %an <%ae> %ad%n  subject: %s' ff208135f6bbe35dc7202eb5b0675b87979860e7
+ff208135f6bbe35dc7202eb5b0675b87979860e7
+  parent : 2130a07da4db77181c952e51146c8b932ce69030
+  author : Bibek Jyoti Charah <bibekcharah@gmail.com> Wed Sep 2 10:08:00 2026 +0530
+  subject: feat-2: add feat2.txt
+[exit code: 0]
+
+# Note: author identity/date are preserved, the committer and parent are new.
+
+--- 2e. cherry-pick conflict ---
+
+# main and feature both edited shared.txt on the same line, from the same base.
+$ printf 'version: main-edit\n' > shared.txt && git add shared.txt && git commit -m 'main-4: edit shared.txt on main'
+[main 2760b20] main-4: edit shared.txt on main
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+[exit code: 0]
+
+$ git log --oneline -3
+2760b20 main-4: edit shared.txt on main
+ff20813 feat-2: add feat2.txt
+2130a07 main-3: add shared.txt
+[exit code: 0]
+
+$ git rev-parse feature
+15141353b78b0266822623470631aa3eb0fb7833
+[exit code: 0]
+
+$ git cherry-pick 15141353b78b0266822623470631aa3eb0fb7833
+Auto-merging shared.txt
+CONFLICT (content): Merge conflict in shared.txt
+error: could not apply 1514135... feat-3: edit shared.txt on feature
+hint: After resolving the conflicts, mark them with
+hint: "git add/rm <pathspec>", then run
+hint: "git cherry-pick --continue".
+hint: You can instead skip this commit with "git cherry-pick --skip".
+hint: To abort and get back to the state before "git cherry-pick",
+hint: run "git cherry-pick --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+[exit code: 1]
+
+# Non-zero exit. The cherry-pick is paused, not finished.
+
+$ git status
+On branch main
+You are currently cherry-picking commit 1514135.
+  (fix conflicts and run "git cherry-pick --continue")
+  (use "git cherry-pick --skip" to skip this patch)
+  (use "git cherry-pick --abort" to cancel the cherry-pick operation)
+
+Unmerged paths:
+  (use "git add <file>..." to mark resolution)
+	both modified:   shared.txt
+
+no changes added to commit (use "git add" and/or "git commit -a")
+[exit code: 0]
+
+$ cat shared.txt
+<<<<<<< HEAD
+version: main-edit
+=======
+version: feature-edit
+>>>>>>> 1514135 (feat-3: edit shared.txt on feature)
+[exit code: 0]
+
+$ git diff --name-only --diff-filter=U
+shared.txt
+[exit code: 0]
+
+--- 2f. option A: abort, throw the whole thing away ---
+
+$ git cherry-pick --abort
+[exit code: 0]
+
+$ git status --short
+[exit code: 0]
+
+$ cat shared.txt
+version: main-edit
+[exit code: 0]
+
+$ git log --oneline -1
+2760b20 main-4: edit shared.txt on main
+[exit code: 0]
+
+# Back exactly where we started: HEAD is main-4, worktree clean.
+
+--- 2g. option B: resolve, then --continue ---
+
+$ git cherry-pick 15141353b78b0266822623470631aa3eb0fb7833
+Auto-merging shared.txt
+CONFLICT (content): Merge conflict in shared.txt
+error: could not apply 1514135... feat-3: edit shared.txt on feature
+hint: After resolving the conflicts, mark them with
+hint: "git add/rm <pathspec>", then run
+hint: "git cherry-pick --continue".
+hint: You can instead skip this commit with "git cherry-pick --skip".
+hint: To abort and get back to the state before "git cherry-pick",
+hint: run "git cherry-pick --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+[exit code: 1]
+
+$ cat shared.txt
+<<<<<<< HEAD
+version: main-edit
+=======
+version: feature-edit
+>>>>>>> 1514135 (feat-3: edit shared.txt on feature)
+[exit code: 0]
+
+# Resolve by hand (keep both, which is a real decision, not a mechanical one):
+$ printf 'version: main-edit + feature-edit (resolved by hand)\n' > shared.txt
+[exit code: 0]
+
+$ git add shared.txt
+[exit code: 0]
+
+$ git status --short
+M  shared.txt
+[exit code: 0]
+
+$ git cherry-pick --continue --no-edit
+[main d491933] feat-3: edit shared.txt on feature
+ Date: Wed Sep 2 10:09:00 2026 +0530
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+[exit code: 0]
+
+$ git log --oneline -3
+d491933 feat-3: edit shared.txt on feature
+2760b20 main-4: edit shared.txt on main
+ff20813 feat-2: add feat2.txt
+[exit code: 0]
+
+$ cat shared.txt
+version: main-edit + feature-edit (resolved by hand)
+[exit code: 0]
+
+$ git show --stat HEAD
+commit d491933a3c3ca5a814d2c3a62d633ff98d80097e
+Author: Bibek Jyoti Charah <bibekcharah@gmail.com>
+Date:   Wed Sep 2 10:09:00 2026 +0530
+
+    feat-3: edit shared.txt on feature
+
+ shared.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+[exit code: 0]
+
+# The resolved cherry-pick landed as yet another new SHA.
+
+--- 2h. the trap: cherry-pick then merge the same branch ---
+
+$ git log --oneline --all --graph
+* d491933 feat-3: edit shared.txt on feature
+* 2760b20 main-4: edit shared.txt on main
+* ff20813 feat-2: add feat2.txt
+| * 1514135 feat-3: edit shared.txt on feature
+| * 8990bd1 feat-2: add feat2.txt
+| * 6e5b0b8 feat-1: add feat1.txt
+|/  
+* 2130a07 main-3: add shared.txt
+* 6669940 main-2: add b.txt
+* 624c6ef main-1: add a.txt
+[exit code: 0]
+
+$ git merge feature -m 'merge feature into main'
+Auto-merging shared.txt
+CONFLICT (content): Merge conflict in shared.txt
+Automatic merge failed; fix conflicts and then commit the result.
+[exit code: 1]
+
+# Merging feature now replays feat-3 again. Its content already arrived via the
+# cherry-pick, but with a DIFFERENT resolution, so git cannot fast-path it -> conflict.
+
+$ git status --short
+A  feat1.txt
+UU shared.txt
+[exit code: 0]
+
+$ cat shared.txt
+<<<<<<< HEAD
+version: main-edit + feature-edit (resolved by hand)
+=======
+version: feature-edit
+>>>>>>> feature
+[exit code: 0]
+
+$ git merge --abort
+[exit code: 0]
+
+$ git status --short
+[exit code: 0]
+
+$ git log --oneline -1
+d491933 feat-3: edit shared.txt on feature
+[exit code: 0]
+
+--- 2i. git cherry: which feature commits are already upstream by patch-id ---
+
+$ git cherry -v main feature
++ 6e5b0b8bdd4fd8784c778ab57309c10e35ee04e3 feat-1: add feat1.txt
+- 8990bd12eb37289a786b7d3e4561af9a00445c49 feat-2: add feat2.txt
++ 15141353b78b0266822623470631aa3eb0fb7833 feat-3: edit shared.txt on feature
+[exit code: 0]
+
+# '-' = an equivalent patch already exists on main (the cherry-picked ones).
+# '+' = not yet on main.
+
+
+================================================================
+DONE
+================================================================
+
+$ git -C '/home/SammyUrfen/.cache/gitdemo/task1' log --oneline
+dbf9a1c c2: add untracked.txt explicitly
+7cd6cc0 c1: commit -a sweeps the tracked modification
+734f4f3 c0: add tracked.txt
+[exit code: 0]
+
+$ git -C '/home/SammyUrfen/.cache/gitdemo/task2' log --oneline --graph --all
+* d491933 feat-3: edit shared.txt on feature
+* 2760b20 main-4: edit shared.txt on main
+* ff20813 feat-2: add feat2.txt
+| * 1514135 feat-3: edit shared.txt on feature
+| * 8990bd1 feat-2: add feat2.txt
+| * 6e5b0b8 feat-1: add feat1.txt
+|/  
+* 2130a07 main-3: add shared.txt
+* 6669940 main-2: add b.txt
+* 624c6ef main-1: add a.txt
+[exit code: 0]
+
+workdir left in place for inspection: /home/SammyUrfen/.cache/gitdemo
